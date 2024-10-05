@@ -12,6 +12,7 @@ struct MusicUpSwiftApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .accentColor(customGreen) // Setze die globale Akzentfarbe
         }
     }
 }

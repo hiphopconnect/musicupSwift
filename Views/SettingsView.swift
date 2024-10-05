@@ -1,192 +1,197 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - ExportType Enum
-
-enum ExportType: String, CaseIterable, Identifiable, Equatable {
-    var id: String { self.rawValue }
-    
-    case json = "JSON"
-    case xml = "XML"
-    case csv = "CSV"
-}
-
-// MARK: - ActionType Enum
-
-enum ActionType: Identifiable, Equatable {
-    var id: String {
-        switch self {
-        case .changeDataSource:
-            return "changeDataSource"
-        case .importType(let type):
-            return "importType_\(type.rawValue)"
-        }
-    }
-    
-    case changeDataSource
-    case importType(ExportType)
-}
-
-// MARK: - SettingsView
-
 struct SettingsView: View {
     @ObservedObject var dataManager: DataManager
-    @Environment(\.dismiss) var dismiss // Für das Dismissen des Sheets
-    
-    @State private var selectedAction: ActionType? = nil
-    @State private var showShareSheet = false
-    @State private var exportURL: URL? = nil
-    
-    // Zustände für Fehlermeldungen und Bestätigungen
+
+    @State private var showFileImporter = false
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
-    @State private var showConfirmationAlert = false
+
+    @State private var isFileExporterPresented = false
+    @State private var exportData: Data? = nil
+    @State private var selectedExportType: ExportType = .json
+
+    @State private var showCustomAlert = false
     @State private var confirmationMessage = ""
-    
+
+    // Import-Optionen
+    @State private var showImportOptions = false
+    @State private var selectedImportType: ImportType = .json
+
+    enum ExportType: String, CaseIterable, Identifiable {
+        case json = "JSON"
+        case xml = "XML"
+        case csv = "CSV"
+
+        var id: String { self.rawValue }
+    }
+
+    enum ImportType: String, CaseIterable, Identifiable {
+        case json = "JSON"
+        case xml = "XML"
+        case csv = "CSV"
+
+        var id: String { self.rawValue }
+    }
+
     var body: some View {
         NavigationView {
             Form {
-                // Section für den JSON-Dateipfad
-                Section(header: Text("JSON File Path")) {
-                    TextField("Path", text: Binding(
-                        get: { UserDefaults.standard.string(forKey: dataManager.jsonFilePathKey) ?? "Keine Datei ausgewählt." },
-                        set: { _ in }
-                    ))
-                    .disabled(true)
-                    
+                Section(header: Text("Datenverwaltung")) {
+                    // Button zum Ändern des JSON-Pfads
                     Button(action: {
-                        selectedAction = .changeDataSource
+                        showFileImporter = true
                     }) {
-                        Text("Change JSON Path")
+                        Text("JSON-Pfad ändern")
+                            .foregroundColor(customGreen)
                     }
-                }
-                
-                // Section für Import & Export
-                Section(header: Text("Importieren & Exportieren")) {
-                    // Export Buttons
-                    ForEach(ExportType.allCases) { type in
-                        Button(action: {
-                            exportData(type: type)
-                        }) {
-                            Text("Export als \(type.rawValue)")
+
+                    // Import-Optionen
+                    Picker("Importformat", selection: $selectedImportType) {
+                        ForEach(ImportType.allCases) { type in
+                            Text(type.rawValue).tag(type)
                         }
                     }
-                    
-                    // Import Buttons
-                    ForEach(ExportType.allCases) { type in
-                        Button(action: {
-                            selectedAction = .importType(type)
-                        }) {
-                            Text("Import \(type.rawValue)")
+
+                    Button(action: {
+                        showImportOptions = true
+                    }) {
+                        Text("Daten importieren")
+                            .foregroundColor(customGreen)
+                    }
+                    .actionSheet(isPresented: $showImportOptions) {
+                        ActionSheet(
+                            title: Text("Importieren von \(selectedImportType.rawValue)"),
+                            buttons: [
+                                .default(Text("Datei auswählen")) {
+                                    showFileImporter = true
+                                },
+                                .cancel()
+                            ]
+                        )
+                    }
+
+                    // Export-Optionen
+                    Picker("Exportformat", selection: $selectedExportType) {
+                        ForEach(ExportType.allCases) { type in
+                            Text(type.rawValue).tag(type)
                         }
                     }
-                }
-            }
-            .navigationTitle("Einstellungen")
-            .navigationBarItems(trailing: Button("Fertig") {
-                dismiss()
-            })
-            .sheet(item: $selectedAction) { action in
-                switch action {
-                case .changeDataSource:
-                    DocumentPicker(allowedTypes: [UTType.json]) { selectedURL in
-                        guard let url = selectedURL else { return }
-                        
-                        // Kopiere die ausgewählte JSON-Datei in das Dokumentenverzeichnis
-                        let fileName = "user_albums.json"
-                        let destinationURL = dataManager.getDocumentsDirectory().appendingPathComponent(fileName)
-                        
-                        do {
-                            // Entferne die vorhandene Datei, falls vorhanden
-                            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                                try FileManager.default.removeItem(at: destinationURL)
-                            }
-                            // Kopiere die Datei
-                            try FileManager.default.copyItem(at: url, to: destinationURL)
-                            
-                            // Setze den neuen Pfad in UserDefaults und lade die Alben neu
-                            DispatchQueue.main.async {
-                                UserDefaults.standard.set(destinationURL.path, forKey: dataManager.jsonFilePathKey)
-                                dataManager.loadAlbums() // Lade die Alben aus der neuen Datei
-                                
-                                // Zeige eine Bestätigung an
-                                confirmationMessage = "JSON-Datei ausgewählt: \(destinationURL.lastPathComponent)"
-                                showConfirmationAlert = true
-                            }
-                        } catch {
-                            print("Fehler beim Kopieren der Datei: \(error.localizedDescription)")
-                            DispatchQueue.main.async {
-                                errorMessage = "Fehler beim Kopieren der Datei: \(error.localizedDescription)"
-                                showErrorAlert = true
-                            }
-                        }
-                    }
-                    
-                case .importType(let type):
-                    DocumentPicker(allowedTypes: allowedTypes(for: type)) { selectedURL in
-                        guard let url = selectedURL else { return }
-                        
-                        // Importiere die ausgewählte Datei
-                        DispatchQueue.main.async {
-                            switch type {
-                            case .json:
-                                do {
-                                    try dataManager.importAlbums(from: url.path)
-                                    confirmationMessage = "JSON-Datei importiert: \(url.lastPathComponent)"
-                                    showConfirmationAlert = true
-                                } catch {
-                                    errorMessage = "Fehler beim Importieren der JSON-Datei: \(error.localizedDescription)"
-                                    showErrorAlert = true
-                                }
-                            case .xml:
-                                do {
-                                    try dataManager.importXml(from: url.path)
-                                    confirmationMessage = "XML-Datei importiert: \(url.lastPathComponent)"
-                                    showConfirmationAlert = true
-                                } catch {
-                                    errorMessage = "Fehler beim Importieren der XML-Datei: \(error.localizedDescription)"
-                                    showErrorAlert = true
-                                }
-                            case .csv:
-                                do {
-                                    try dataManager.importCsv(from: url.path)
-                                    confirmationMessage = "CSV-Datei importiert: \(url.lastPathComponent)"
-                                    showConfirmationAlert = true
-                                } catch {
-                                    errorMessage = "Fehler beim Importieren der CSV-Datei: \(error.localizedDescription)"
-                                    showErrorAlert = true
-                                }
-                            }
-                        }
+
+                    Button(action: {
+                        exportData(type: selectedExportType)
+                    }) {
+                        Text("Daten exportieren")
+                            .foregroundColor(customGreen)
                     }
                 }
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = exportURL {
-                    ShareSheet(activityItems: [url])
+            .navigationBarTitle("Einstellungen", displayMode: .inline)
+            .fileImporter(
+                isPresented: $showFileImporter,
+                allowedContentTypes: allowedContentTypes(for: selectedImportType),
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    handleFileSelection(url)
+                case .failure(let error):
+                    print("Fehler beim Auswählen der Datei: \(error.localizedDescription)")
+                    errorMessage = "Fehler beim Auswählen der Datei: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+            .fileExporter(
+                isPresented: $isFileExporterPresented,
+                document: ExportDocument(data: exportData ?? Data()),
+                contentType: contentType(for: selectedExportType),
+                defaultFilename: defaultFilename(for: selectedExportType)
+            ) { result in
+                switch result {
+                case .success(let url):
+                    print("Datei erfolgreich exportiert nach \(url).")
+                    confirmationMessage = "\(selectedExportType.rawValue) erfolgreich exportiert."
+                    showCustomAlert = true
+                case .failure(let error):
+                    print("Fehler beim Exportieren: \(error.localizedDescription)")
+                    errorMessage = "Fehler beim Exportieren der Daten: \(error.localizedDescription)"
+                    showErrorAlert = true
                 }
             }
             .alert(isPresented: $showErrorAlert) {
-                Alert(title: Text("Fehler"),
-                      message: Text(errorMessage),
-                      dismissButton: .default(Text("OK")))
+                Alert(title: Text("Fehler"), message: Text(errorMessage), dismissButton: .default(Text("OK")))
             }
-            .alert(isPresented: $showConfirmationAlert) {
-                Alert(title: Text("Erfolgreich"),
-                      message: Text(confirmationMessage),
-                      dismissButton: .default(Text("OK")))
+            .overlay(
+                Group {
+                    if showCustomAlert {
+                        CustomAlertView(title: "Erfolgreich", message: confirmationMessage) {
+                            showCustomAlert = false
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    // Funktion zum Auswählen und Importieren der Datei
+    func handleFileSelection(_ url: URL) {
+        // Start accessing the security-scoped resource
+        guard url.startAccessingSecurityScopedResource() else {
+            print("Konnte nicht auf die sicherheitsbeschränkte Ressource zugreifen.")
+            errorMessage = "Konnte nicht auf die ausgewählte Datei zugreifen."
+            showErrorAlert = true
+            return
+        }
+
+        defer {
+            // Stop accessing the resource when done
+            url.stopAccessingSecurityScopedResource()
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            
+            // Wenn die ausgewählte Datei eine andere JSON-Datei ist, kopiere sie zum festen Pfad
+            if selectedImportType == .json && url.path != dataManager.getJsonFileURL().path {
+                try data.write(to: dataManager.getJsonFileURL())
+                print("JSON-Datei kopiert nach \(dataManager.getJsonFileURL().path).")
+            }
+
+            switch selectedImportType {
+            case .json:
+                try dataManager.importAlbumsFromJsonData(data)
+            case .xml:
+                try dataManager.importAlbumsFromXmlData(data)
+            case .csv:
+                try dataManager.importAlbumsFromCsvData(data)
+            }
+
+            DispatchQueue.main.async {
+                confirmationMessage = "\(selectedImportType.rawValue)-Datei erfolgreich importiert."
+                showCustomAlert = true
+            }
+        } catch {
+            print("Fehler beim Importieren der Datei: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                errorMessage = "Fehler beim Importieren der Datei: \(error.localizedDescription)"
+                showErrorAlert = true
             }
         }
     }
-    
-    // MARK: - Export-Funktion
 
+    // Funktion zum Exportieren der Daten
     func exportData(type: ExportType) {
-        let exportPath = getExportURL(for: type).path
+        let exportURL = getExportURL(for: type)
+        let exportPath = exportURL.path
         do {
             try performExport(type: type, to: exportPath)
-            exportURL = getExportURL(for: type)
-            showShareSheet = true
+            let data = try Data(contentsOf: exportURL)
+            DispatchQueue.main.async {
+                self.exportData = data
+                self.isFileExporterPresented = true
+            }
         } catch {
             print("Fehler beim Exportieren: \(error.localizedDescription)")
             DispatchQueue.main.async {
@@ -195,8 +200,13 @@ struct SettingsView: View {
             }
         }
     }
-    
-    // Funktion zum Exportieren der Daten
+
+    // Hilfsfunktionen und -typen
+    func getExportURL(for type: ExportType) -> URL {
+        let fileName = defaultFilename(for: type)
+        return FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+    }
+
     func performExport(type: ExportType, to path: String) throws {
         switch type {
         case .json:
@@ -207,86 +217,86 @@ struct SettingsView: View {
             try dataManager.exportCsv(to: path)
         }
     }
-    
-    // Funktion zum Erstellen eines temporären Export-URLs
-    func getExportURL(for type: ExportType) -> URL {
-        // Erstelle eine temporäre Datei im temp-Verzeichnis
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let filename: String
+
+    func contentType(for type: ExportType) -> UTType {
         switch type {
         case .json:
-            filename = "albums_export.json"
+            return .json
         case .xml:
-            filename = "albums_export.xml"
+            return .xml
         case .csv:
-            filename = "albums_export.csv"
+            return .commaSeparatedText
         }
-        let exportPath = tempDirectory.appendingPathComponent(filename)
-        return exportPath
     }
-    
-    // Funktion zur Bestimmung der erlaubten UTTypes basierend auf ExportType
-    func allowedTypes(for type: ExportType) -> [UTType] {
+
+    func allowedContentTypes(for type: ImportType) -> [UTType] {
         switch type {
         case .json:
-            return [UTType.json]
+            return [.json]
         case .xml:
-            return [UTType.xml]
+            return [.xml]
         case .csv:
-            return [UTType.commaSeparatedText]
+            return [.commaSeparatedText]
         }
     }
-    
-    // MARK: - Dokumenten-Picker für die Dateiauswahl
 
-    struct DocumentPicker: UIViewControllerRepresentable {
-        var allowedTypes: [UTType]
-        var onPick: (URL?) -> Void
-        
-        func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedTypes, asCopy: true)
-            picker.delegate = context.coordinator
-            picker.allowsMultipleSelection = false
-            return picker
-        }
-        
-        func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-        
-        func makeCoordinator() -> Coordinator {
-            Coordinator(onPick: onPick)
-        }
-        
-        class Coordinator: NSObject, UIDocumentPickerDelegate {
-            var onPick: (URL?) -> Void
-            
-            init(onPick: @escaping (URL?) -> Void) {
-                self.onPick = onPick
-            }
-            
-            func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-                onPick(urls.first)
-            }
-            
-            func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-                onPick(nil)
-            }
+    func defaultFilename(for type: ExportType) -> String {
+        switch type {
+        case .json:
+            return "albums_export.json"
+        case .xml:
+            return "albums_export.xml"
+        case .csv:
+            return "albums_export.csv"
         }
     }
-    
-    // MARK: - ShareSheet zum Teilen von exportierten Dateien
 
-    struct ShareSheet: UIViewControllerRepresentable {
-        var activityItems: [Any]
-        var applicationActivities: [UIActivity]? = nil
+    // Definition des Exportdokuments
+    struct ExportDocument: FileDocument {
+        static var readableContentTypes: [UTType] = []
         
-        func makeUIViewController(context: Context) -> UIActivityViewController {
-            let controller = UIActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: applicationActivities
-            )
-            return controller
+        var data: Data
+        
+        init(data: Data) {
+            self.data = data
         }
         
-        func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+        init(configuration: ReadConfiguration) throws {
+            self.data = Data()
+        }
+        
+        func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+            return FileWrapper(regularFileWithContents: data)
+        }
+    }
+
+    // Benutzerdefinierter Alert
+    struct CustomAlertView: View {
+        var title: String
+        var message: String
+        var onDismiss: () -> Void
+
+        var body: some View {
+            VStack(spacing: 16) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(customGreen)
+                Text(message)
+                    .multilineTextAlignment(.center)
+                Button(action: onDismiss) {
+                    Text("OK")
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(customGreen)
+                        .cornerRadius(8)
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(radius: 10)
+            .padding()
+        }
     }
 }

@@ -1,12 +1,13 @@
 import SwiftUI
 
 struct AddEditAlbumView: View {
+
     @Environment(\.presentationMode) var presentationMode
     @ObservedObject var dataManager: DataManager
-    
+
     // Wenn ein Album bearbeitet wird, wird es hier übergeben
     var albumToEdit: Album?
-    
+
     @State private var id: String = ""
     @State private var name: String = ""
     @State private var artist: String = ""
@@ -15,16 +16,16 @@ struct AddEditAlbumView: View {
     @State private var medium: String = "Vinyl" // Gültiger Startwert
     @State private var digital: Bool = false
     @State private var tracks: [Track] = []
-    
+
     // Optionen für Medium
     let mediums = ["Vinyl", "CD", "Cassette", "Digital"]
-    
-    // Years Picker - Start bei 2024
+
+    // Years Picker - Start bei aktuellem Jahr
     let years: [String] = {
         let currentYear = Calendar.current.component(.year, from: Date())
         return Array((1900...currentYear).reversed()).map { String($0) }
     }()
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -32,60 +33,69 @@ struct AddEditAlbumView: View {
                     TextField("Name", text: $name)
                     TextField("Artist", text: $artist)
                     TextField("Genre", text: $genre) // Freies Textfeld
+
                     Picker("Year", selection: $year) { // Picker für Jahr
                         ForEach(years, id: \.self) { year in
                             Text(year).tag(year)
                         }
                     }
-                    
+                    .accentColor(customGreen) // Akzentfarbe anwenden
+
                     Picker("Medium", selection: $medium) {
                         ForEach(mediums, id: \.self) { medium in
                             Text(medium).tag(medium)
                         }
                     }
-                    
+                    .accentColor(customGreen) // Akzentfarbe anwenden
+
                     Toggle("Digital", isOn: $digital)
+                        .toggleStyle(SwitchToggleStyle(tint: customGreen)) // Schalterfarbe ändern
                 }
-                
+
                 Section(header: Text("Tracks")) {
                     List {
-                        ForEach(tracks) { track in
+                        ForEach(tracks.indices, id: \.self) { index in
                             HStack {
-                                Text("Track \(track.formattedTrackNumber)")
-                                TextField("Title", text: Binding(
-                                    get: { track.title },
-                                    set: { newValue in
-                                        if let index = tracks.firstIndex(where: { $0.id == track.id }) {
-                                            tracks[index].title = newValue
-                                        }
-                                    }
-                                ))
+                                Text("Track \(tracks[index].formattedTrackNumber)")
+                                TextField("Title", text: $tracks[index].title)
                             }
                         }
                         .onDelete(perform: deleteTracks)
                     }
-                    
+
                     Button(action: addTrack) {
-                        Text("Add Track")
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(customGreen) // Icon in Grün
+                            Text("Add Track")
+                                .foregroundColor(customGreen) // Text in Grün
+                        }
                     }
                 }
             }
             .navigationTitle(albumToEdit == nil ? "Add Album" : "Edit Album")
-            .navigationBarItems(leading:
-                Button("Cancel") {
+            .navigationBarItems(
+                leading: Button("Cancel") {
                     presentationMode.wrappedValue.dismiss()
-                },
-                trailing:
-                Button("Save") {
-                    saveAlbum()
                 }
+                .foregroundColor(customGreen), // "Cancel"-Button in Grün
+
+                trailing: Button("Save") {
+                    saveAlbum()
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .foregroundColor(customGreen) // "Save"-Button in Grün
             )
             .onAppear(perform: loadAlbumData)
+            .accentColor(customGreen) // Akzentfarbe für die Navigation
         }
     }
-    
+
+    // MARK: - Funktionen
+
     func loadAlbumData() {
         if let album = albumToEdit {
+            print("Album zum Bearbeiten geladen: \(album.name)")
             id = album.id
             name = album.name
             artist = album.artist
@@ -97,18 +107,18 @@ struct AddEditAlbumView: View {
         } else {
             // Generiere eine neue ID für ein neues Album
             id = UUID().uuidString
-            // Set year to current year or empty
+            // Setze das Jahr auf das aktuelle Jahr
             year = String(Calendar.current.component(.year, from: Date()))
         }
     }
-    
+
     func saveAlbum() {
-        // Ensure that the year is selected
+        // Stelle sicher, dass das Jahr ausgewählt ist
         if year.isEmpty {
-            // Optionally, set a default year
+            // Optional: Setze ein Standardjahr
             year = String(Calendar.current.component(.year, from: Date()))
         }
-        
+
         if let album = albumToEdit, let index = dataManager.albums.firstIndex(where: { $0.id == album.id }) {
             // Aktualisiere bestehendes Album
             dataManager.albums[index].name = name
@@ -132,17 +142,16 @@ struct AddEditAlbumView: View {
             )
             dataManager.albums.append(newAlbum)
         }
-        
+
         dataManager.saveAlbums()
-        presentationMode.wrappedValue.dismiss()
     }
-    
+
     func addTrack() {
         let newTrackNumber = String(tracks.count + 1)
         let newTrack = Track(title: "New Track", trackNumber: newTrackNumber)
         tracks.append(newTrack)
     }
-    
+
     func deleteTracks(at offsets: IndexSet) {
         tracks.remove(atOffsets: offsets)
         // Aktualisiere die Track-Nummern
