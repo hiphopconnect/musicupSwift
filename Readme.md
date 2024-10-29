@@ -121,14 +121,15 @@ request. Make sure to follow best practices when contributing.
 
 I also have a repository with a Flutter version of this software, which I originally developed on Linux Mint. My initial thought was, "Great! Just one codebase, and I can publish on all platforms." However, I quickly ran into dependency issues that became difficult to resolve.
 
-As a result, I developed the mobile version of the software for my iPhone in Swift.
+As a result, I developed the mobile version of the software for my iPhone in Swift. 
+
+I assume that most of the management and maintenance will be done on the Linux Mint version, as it provides more comfortable import and export functionalities for XML, JSON, CSV, etc. Such tasks don’t seem practical on a mobile device. Currently, the JSON data is synced across my devices by third-party software that already synchronizes content between my applications.
 
 ### Future Plans
 
 1. A Kotlin version for Android.
 2. A Flutter version for Android, iOS, Windows, and Mac.
 3. Adding a scanner to load data from a database like CDDB.
-
 
 ## License
 
