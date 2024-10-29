@@ -1,32 +1,31 @@
+// ContentView.swift
 import SwiftUI
-
-// Definiere customGreen, falls nicht bereits geschehen
 
 struct ContentView: View {
     @StateObject private var dataManager = DataManager()
     @State private var showingAddAlbum = false
     @State private var showingSettings = false
 
-    // Such- und Filterzustände
+    // Search and filter states
     @State private var searchText: String = ""
     @State private var selectedSearchScope: SearchScope = .all
-    @State private var selectedMedium: String = "Alle" // Gültiger Startwert
+    @State private var selectedMedium: String = "All" // Gültiger Startwert
     @State private var showDigitalOnly: Bool = false
 
-    // Zustände für Bearbeiten von Alben
+    // State for editing albums
     @State private var albumToEdit: Album? = nil
 
-    // Sortierzustand
+    // Sort state
     @State private var isAscending: Bool = true
 
-    // Optionen für Filter (Genre wurde entfernt)
-    let mediums = ["Alle", "Vinyl", "CD", "Cassette", "Digital"]
+    // Optionen für Filter
+    let mediums = ["All", "Vinyl", "CD", "Cassette", "Digital"]
 
     enum SearchScope: String, CaseIterable, Identifiable {
-        case all = "Alle"
-        case albumName = "Albumname"
-        case artistName = "Künstlername"
-        case trackTitle = "Tracktitel"
+        case all = "All"
+        case albumName = "Album Name"
+        case artistName = "Artist Name"
+        case trackTitle = "Track Title"
 
         var id: String { self.rawValue }
     }
@@ -39,8 +38,9 @@ struct ContentView: View {
                     Text("MusicUp")
                         .font(.largeTitle)
                         .fontWeight(.bold)
+                        .foregroundColor(customGreen)
                     Spacer()
-                    // Sortierbutton
+                    // Sort-Button
                     Button(action: {
                         withAnimation {
                             isAscending.toggle()
@@ -48,33 +48,36 @@ struct ContentView: View {
                     }) {
                         Image(systemName: "arrow.up.arrow.down")
                             .rotationEffect(isAscending ? .degrees(0) : .degrees(180))
-                            .accessibilityLabel(isAscending ? "Sortierung aufsteigend" : "Sortierung absteigend")
+                            .foregroundColor(customGreen)
+                            .accessibilityLabel(isAscending ? "Ascending Sort" : "Descending Sort")
                     }
                     .padding(.trailing, 10)
 
-                    // Einstellungen-Button
+                    // Settings-Button
                     Button(action: {
                         showingSettings = true
                     }) {
                         Image(systemName: "gear")
+                            .foregroundColor(customGreen)
                     }
                     .padding(.trailing, 10)
 
-                    // Hinzufügen-Button
+                    // Add-Button
                     Button(action: {
                         showingAddAlbum = true
                     }) {
                         Image(systemName: "plus")
+                            .foregroundColor(customGreen)
                     }
                 }
                 .padding()
 
-                // Suchleiste mit Suchbereichsauswahl
+                // Suchleiste mit Scope-Auswahl
                 VStack {
                     SearchBar(text: $searchText)
                         .padding(.horizontal)
 
-                    Picker("Suche in", selection: $selectedSearchScope) {
+                    Picker("Search in", selection: $selectedSearchScope) {
                         ForEach(SearchScope.allCases) { scope in
                             Text(scope.rawValue).tag(scope)
                         }
@@ -83,26 +86,29 @@ struct ContentView: View {
                     .padding(.horizontal)
                 }
 
-                // Filter-Optionen ohne Genre
+                // Filteroptionen
                 HStack {
-                    // Medium Filter (beinhaltet "Alle")
+                    // Medium-Filter (inkl. "All")
                     Picker("Medium", selection: $selectedMedium) {
                         ForEach(mediums, id: \.self) { medium in
                             Text(medium).tag(medium)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
+                    .foregroundColor(customGreen)
 
-                    // Digital Filter
+                    // Digital-Filter
                     Toggle(isOn: $showDigitalOnly) {
                         Text("Digital")
                     }
+                    .toggleStyle(SwitchToggleStyle(tint: customGreen))
                 }
                 .padding(.horizontal)
 
                 if dataManager.albums.isEmpty {
-                    Text("Keine Alben verfügbar. Bitte wähle eine Datei in den Einstellungen aus oder füge neue Alben hinzu.")
+                    Text("No albums available. Please select a JSON file in the settings or add new albums.")
                         .padding()
+                        .foregroundColor(.secondary)
                 } else {
                     // Liste der Alben
                     List {
@@ -111,8 +117,10 @@ struct ContentView: View {
                                 VStack(alignment: .leading) {
                                     Text(album.name)
                                         .font(.headline)
+                                        .foregroundColor(customGreen)
                                     Text(album.artist)
                                         .font(.subheadline)
+                                        .foregroundColor(.primary)
                                 }
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -134,7 +142,7 @@ struct ContentView: View {
                     .listStyle(PlainListStyle())
                 }
             }
-            .navigationBarHidden(true) // Verstecke die Standard-Navigationsleiste
+            .navigationBarHidden(true) // Standard-Navigationsleiste ausblenden
             .sheet(isPresented: $showingAddAlbum) {
                 AddEditAlbumView(dataManager: dataManager)
             }
@@ -147,7 +155,7 @@ struct ContentView: View {
         }
     }
 
-    // Filtern und Sortieren der Alben basierend auf den aktuellen Zuständen
+    // Filter- und Sortierlogik
     var filteredAndSortedAlbums: [Album] {
         var result = dataManager.albums
 
@@ -175,17 +183,17 @@ struct ContentView: View {
             }
         }
 
-        // Medium Filter (beinhaltet "Alle")
-        if selectedMedium != "Alle" {
-            result = result.filter { $0.medium == selectedMedium }
+        // Medium-Filter (inkl. "All")
+        if selectedMedium != "All" {
+            result = result.filter { $0.medium.lowercased() == selectedMedium.lowercased() }
         }
 
-        // Digital Filter
+        // Digital-Filter
         if showDigitalOnly {
             result = result.filter { $0.digital }
         }
 
-        // Sortierung basierend auf isAscending
+        // Sortieren basierend auf isAscending
         result.sort {
             if isAscending {
                 return $0.name.lowercased() < $1.name.lowercased()
@@ -197,7 +205,7 @@ struct ContentView: View {
         return result
     }
 
-    // Löschen eines Albums
+    // Album löschen
     func deleteAlbum(_ album: Album) {
         if let index = dataManager.albums.firstIndex(where: { $0.id == album.id }) {
             dataManager.albums.remove(at: index)

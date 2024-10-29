@@ -8,89 +8,105 @@ struct SettingsView: View {
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
 
-    @State private var isFileExporterPresented = false
-    @State private var exportData: Data? = nil
-    @State private var selectedExportType: ExportType = .json
-
-    @State private var showCustomAlert = false
-    @State private var confirmationMessage = ""
-
-    // Import-Optionen
-    @State private var showImportOptions = false
-    @State private var selectedImportType: ImportType = .json
-
-    enum ExportType: String, CaseIterable, Identifiable {
-        case json = "JSON"
-        case xml = "XML"
-        case csv = "CSV"
-
-        var id: String { self.rawValue }
+    // Funktion zur Ermittlung der App-Version
+    func getAppVersion() -> String {
+        if let infoDictionary = Bundle.main.infoDictionary {
+            let version = infoDictionary["CFBundleShortVersionString"] as? String ?? "Unbekannt"
+            let build = infoDictionary["CFBundleVersion"] as? String ?? "Unbekannt"
+            return "Version \(version) (Build \(build))"
+        }
+        return "Version Unbekannt"
     }
 
-    enum ImportType: String, CaseIterable, Identifiable {
-        case json = "JSON"
-        case xml = "XML"
-        case csv = "CSV"
-
-        var id: String { self.rawValue }
-    }
+    // Zähler für Statistiken
+    @State private var vinylCount = 0
+    @State private var cdCount = 0
+    @State private var cassetteCount = 0
+    @State private var digitalCount = 0
+    @State private var digitalYesCount = 0
+    @State private var digitalNoCount = 0
 
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Datenverwaltung")) {
-                    // Button zum Ändern des JSON-Pfads
+                // Abschnitt für App-Informationen
+                Section(header: Text("App-Informationen")
+                            .foregroundColor(customGreen)) {
+                    Text("Maintainer: Michael Milke (Nobo)")
+                        .foregroundColor(.primary)
+                    Link("Email: nobo_code@posteo.de", destination: URL(string: "mailto:nobo_code@posteo.de")!)
+                        .foregroundColor(customGreen)
+                    Link("GitHub: hiphopconnect/musicupSwift", destination: URL(string: "https://github.com/hiphopconnect/musicupSwift/")!)
+                        .foregroundColor(customGreen)
+                    Text("License: GPL-3.0")
+                        .foregroundColor(.primary)
+                    Text(getAppVersion())
+                        .foregroundColor(.primary)
+                }
+
+                // Abschnitt für Statistiken
+                Section(header: Text("Statistiken")
+                            .foregroundColor(customGreen)) {
+                    HStack {
+                        Text("Gesamtanzahl der Alben:")
+                        Spacer()
+                        Text("\(dataManager.albums.count)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("Vinyl-Alben:")
+                        Spacer()
+                        Text("\(vinylCount)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("CD-Alben:")
+                        Spacer()
+                        Text("\(cdCount)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("Cassette-Alben:")
+                        Spacer()
+                        Text("\(cassetteCount)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("Digital-Alben:")
+                        Spacer()
+                        Text("\(digitalCount)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("Alben mit digitaler Kopie:")
+                        Spacer()
+                        Text("\(digitalYesCount)")
+                            .foregroundColor(customGreen)
+                    }
+                    HStack {
+                        Text("Alben ohne digitale Kopie:")
+                        Spacer()
+                        Text("\(digitalNoCount)")
+                            .foregroundColor(customGreen)
+                    }
+                }
+
+                // Abschnitt für Datenverwaltung
+                Section(header: Text("Datenverwaltung")
+                            .foregroundColor(customGreen)) {
                     Button(action: {
                         showFileImporter = true
                     }) {
                         Text("JSON-Pfad ändern")
                             .foregroundColor(customGreen)
                     }
-
-                    // Import-Optionen
-                    Picker("Importformat", selection: $selectedImportType) {
-                        ForEach(ImportType.allCases) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-
-                    Button(action: {
-                        showImportOptions = true
-                    }) {
-                        Text("Daten importieren")
-                            .foregroundColor(customGreen)
-                    }
-                    .actionSheet(isPresented: $showImportOptions) {
-                        ActionSheet(
-                            title: Text("Importieren von \(selectedImportType.rawValue)"),
-                            buttons: [
-                                .default(Text("Datei auswählen")) {
-                                    showFileImporter = true
-                                },
-                                .cancel()
-                            ]
-                        )
-                    }
-
-                    // Export-Optionen
-                    Picker("Exportformat", selection: $selectedExportType) {
-                        ForEach(ExportType.allCases) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-
-                    Button(action: {
-                        exportData(type: selectedExportType)
-                    }) {
-                        Text("Daten exportieren")
-                            .foregroundColor(customGreen)
-                    }
                 }
             }
             .navigationBarTitle("Einstellungen", displayMode: .inline)
+            .onAppear(perform: updateCounts)
             .fileImporter(
                 isPresented: $showFileImporter,
-                allowedContentTypes: allowedContentTypes(for: selectedImportType),
+                allowedContentTypes: [.json],
                 allowsMultipleSelection: false
             ) { result in
                 switch result {
@@ -103,200 +119,93 @@ struct SettingsView: View {
                     showErrorAlert = true
                 }
             }
-            .fileExporter(
-                isPresented: $isFileExporterPresented,
-                document: ExportDocument(data: exportData ?? Data()),
-                contentType: contentType(for: selectedExportType),
-                defaultFilename: defaultFilename(for: selectedExportType)
-            ) { result in
-                switch result {
-                case .success(let url):
-                    print("Datei erfolgreich exportiert nach \(url).")
-                    confirmationMessage = "\(selectedExportType.rawValue) erfolgreich exportiert."
-                    showCustomAlert = true
-                case .failure(let error):
-                    print("Fehler beim Exportieren: \(error.localizedDescription)")
-                    errorMessage = "Fehler beim Exportieren der Daten: \(error.localizedDescription)"
-                    showErrorAlert = true
-                }
-            }
             .alert(isPresented: $showErrorAlert) {
-                Alert(title: Text("Fehler"), message: Text(errorMessage), dismissButton: .default(Text("OK")))
+                Alert(title: Text("Fehler"),
+                      message: Text(errorMessage),
+                      dismissButton: .default(Text("OK")))
             }
-            .overlay(
-                Group {
-                    if showCustomAlert {
-                        CustomAlertView(title: "Erfolgreich", message: confirmationMessage) {
-                            showCustomAlert = false
-                        }
-                    }
-                }
-            )
         }
     }
 
-    // Funktion zum Auswählen und Importieren der Datei
+    // Funktion zur Aktualisierung der Zähler
+    func updateCounts() {
+        let albumsToCount = dataManager.albums
+
+        vinylCount = 0
+        cdCount = 0
+        cassetteCount = 0
+        digitalCount = 0
+        digitalYesCount = 0
+        digitalNoCount = 0
+
+        for album in albumsToCount {
+            switch album.medium.lowercased() {
+            case "vinyl":
+                vinylCount += 1
+            case "cd":
+                cdCount += 1
+            case "cassette":
+                cassetteCount += 1
+            case "digital":
+                digitalCount += 1
+            default:
+                break
+            }
+
+            if album.digital {
+                digitalYesCount += 1
+            } else {
+                digitalNoCount += 1
+            }
+        }
+    }
+
+    // Funktion zur Auswahl und zum Import der JSON-Datei
     func handleFileSelection(_ url: URL) {
-        // Start accessing the security-scoped resource
+        // Zugriff auf die sicherheitsabhängige Ressource starten
         guard url.startAccessingSecurityScopedResource() else {
-            print("Konnte nicht auf die sicherheitsbeschränkte Ressource zugreifen.")
-            errorMessage = "Konnte nicht auf die ausgewählte Datei zugreifen."
+            print("Zugriff auf die sicherheitsabhängige Ressource fehlgeschlagen.")
+            errorMessage = "Zugriff auf die ausgewählte Datei fehlgeschlagen."
             showErrorAlert = true
             return
         }
 
         defer {
-            // Stop accessing the resource when done
+            // Zugriff auf die Ressource beenden, wenn die Funktion beendet wird
             url.stopAccessingSecurityScopedResource()
         }
 
         do {
             let data = try Data(contentsOf: url)
-            
-            // Wenn die ausgewählte Datei eine andere JSON-Datei ist, kopiere sie zum festen Pfad
-            if selectedImportType == .json && url.path != dataManager.getJsonFileURL().path {
-                try data.write(to: dataManager.getJsonFileURL())
-                print("JSON-Datei kopiert nach \(dataManager.getJsonFileURL().path).")
+            print("Daten aus der ausgewählten Datei gelesen: \(data.count) Bytes")
+
+            // Überprüfen, ob die Datei leer ist
+            if data.isEmpty {
+                print("Die ausgewählte Datei ist leer.")
+                throw NSError(domain: "Ausgewählte Datei ist leer.", code: 0, userInfo: nil)
             }
 
-            switch selectedImportType {
-            case .json:
-                try dataManager.importAlbumsFromJsonData(data)
-            case .xml:
-                try dataManager.importAlbumsFromXmlData(data)
-            case .csv:
-                try dataManager.importAlbumsFromCsvData(data)
+            // Die ausgewählte JSON-Datei in das Verzeichnis der App kopieren
+            let destinationURL = dataManager.jsonFileURL
+            if url.path != destinationURL.path {
+                try data.write(to: destinationURL)
+                print("JSON-Datei nach \(destinationURL.path) kopiert.")
             }
+
+            // Alben aus den JSON-Daten importieren
+            try dataManager.importAlbumsFromJsonData(data)
 
             DispatchQueue.main.async {
-                confirmationMessage = "\(selectedImportType.rawValue)-Datei erfolgreich importiert."
-                showCustomAlert = true
+                // Zähler nach dem Import aktualisieren
+                updateCounts()
+                print("JSON-Datei erfolgreich importiert.")
             }
         } catch {
-            print("Fehler beim Importieren der Datei: \(error.localizedDescription)")
+            print("Fehler beim Importieren der Datei: \(error)")
             DispatchQueue.main.async {
                 errorMessage = "Fehler beim Importieren der Datei: \(error.localizedDescription)"
                 showErrorAlert = true
             }
-        }
-    }
-
-    // Funktion zum Exportieren der Daten
-    func exportData(type: ExportType) {
-        let exportURL = getExportURL(for: type)
-        let exportPath = exportURL.path
-        do {
-            try performExport(type: type, to: exportPath)
-            let data = try Data(contentsOf: exportURL)
-            DispatchQueue.main.async {
-                self.exportData = data
-                self.isFileExporterPresented = true
-            }
-        } catch {
-            print("Fehler beim Exportieren: \(error.localizedDescription)")
-            DispatchQueue.main.async {
-                errorMessage = "Fehler beim Exportieren der Daten: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
-        }
-    }
-
-    // Hilfsfunktionen und -typen
-    func getExportURL(for type: ExportType) -> URL {
-        let fileName = defaultFilename(for: type)
-        return FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-    }
-
-    func performExport(type: ExportType, to path: String) throws {
-        switch type {
-        case .json:
-            try dataManager.exportJson(to: path)
-        case .xml:
-            try dataManager.exportXml(to: path)
-        case .csv:
-            try dataManager.exportCsv(to: path)
-        }
-    }
-
-    func contentType(for type: ExportType) -> UTType {
-        switch type {
-        case .json:
-            return .json
-        case .xml:
-            return .xml
-        case .csv:
-            return .commaSeparatedText
-        }
-    }
-
-    func allowedContentTypes(for type: ImportType) -> [UTType] {
-        switch type {
-        case .json:
-            return [.json]
-        case .xml:
-            return [.xml]
-        case .csv:
-            return [.commaSeparatedText]
-        }
-    }
-
-    func defaultFilename(for type: ExportType) -> String {
-        switch type {
-        case .json:
-            return "albums_export.json"
-        case .xml:
-            return "albums_export.xml"
-        case .csv:
-            return "albums_export.csv"
-        }
-    }
-
-    // Definition des Exportdokuments
-    struct ExportDocument: FileDocument {
-        static var readableContentTypes: [UTType] = []
-        
-        var data: Data
-        
-        init(data: Data) {
-            self.data = data
-        }
-        
-        init(configuration: ReadConfiguration) throws {
-            self.data = Data()
-        }
-        
-        func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-            return FileWrapper(regularFileWithContents: data)
-        }
-    }
-
-    // Benutzerdefinierter Alert
-    struct CustomAlertView: View {
-        var title: String
-        var message: String
-        var onDismiss: () -> Void
-
-        var body: some View {
-            VStack(spacing: 16) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(customGreen)
-                Text(message)
-                    .multilineTextAlignment(.center)
-                Button(action: onDismiss) {
-                    Text("OK")
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(customGreen)
-                        .cornerRadius(8)
-                }
-            }
-            .padding()
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .shadow(radius: 10)
-            .padding()
         }
     }
 }
